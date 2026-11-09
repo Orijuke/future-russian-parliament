@@ -103,12 +103,17 @@
   <div class="drawer__inner">
     <p class="eyebrow">● О проекте</p>
     <h3 class="drawer__title">Карта условных многомандатных округов</h3>
-    <p>Интерактивная модель возможного парламента России. Каждый регион — округ. В Сенате каждый регион представлен тремя местами. Число мест в Думе — кубический корень из населения страны, округлённый вверх.</p>
+    <p>Интерактивная модель возможного парламента России. Каждый регион — округ. В Сенате каждый регион представлен тремя местами. Число мест в каждой палате считается по своей формуле.</p>
+    <p class="eyebrow">● Расчёт мест</p>
+    <ul class="drawer__list">
+      <li><b>Сенат</b> — 3 места × число регионов</li>
+      <li><b>Дума</b> — ⌈∛ население⌉: кубический корень из населения страны, округлённый вверх</li>
+    </ul>
     <p class="eyebrow">● Управление</p>
     <ul class="drawer__list">
       <li><b>Наведение</b> — подсветка региона и его мест в Сенате</li>
       <li><b>Клик</b> — закрепить карточку региона</li>
-      <li><b>Клик по округу у подковы</b> — выделить его сенаторов</li>
+      <li><b>Наведение на федеральный округ у подковы</b> — выделить его сенаторов, клик — закрепить выделение</li>
       <li><b>Правая кнопка / Esc</b> — открепить, снять выделение</li>
       <li><b>Палаты</b> — нажмите на малую палату, чтобы переключиться</li>
       <li><b>Колесо / перетаскивание</b> — масштаб и сдвиг карты</li>
@@ -176,6 +181,7 @@
       <div class="seg" id="modeSeg" role="radiogroup" aria-label="Окраска карты">
         <button type="button" role="radio" data-mode="enamel">Эмаль</button>
         <button type="button" role="radio" data-mode="status">Статус</button>
+        <button type="button" role="radio" data-mode="pop">Население</button>
       </div>
       <ul class="legend" id="legend"></ul>
 
@@ -218,12 +224,13 @@
 
   <footer class="foot">
     <span>Данные: data.csv · границы: Natural Earth</span>
-    <span>Россия / Сенат</span>
+    <span class="foot__ver">v0.3.2</span>
   </footer>
 </main>
 
 <div class="card" id="card" role="tooltip" aria-hidden="true"></div>
 <div class="card card--pinned" id="pinCard" aria-hidden="true"></div>
+<div class="mathpop" id="mathPop" role="dialog" aria-hidden="true"></div>
 <div class="toast" id="toast"></div>
 
 <script src="map-data.js"></script>

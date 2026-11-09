@@ -71,7 +71,7 @@
   const state = {
     level: Math.max(0, Math.min(2, store.get("frp.level", 1))),
     chamber: store.get("frp.chamber", "senate") === "duma" ? "duma" : "senate",
-    mode: store.get("frp.mode", "enamel") === "status" ? "status" : "enamel",
+    mode: ["status", "pop"].includes(store.get("frp.mode", "enamel")) ? store.get("frp.mode", "enamel") : "enamel",
     hover: null, pinned: null, fo: null,
     view: { x: 0, y: 0, w: GEO.W, h: GEO.H }
   };
@@ -106,14 +106,14 @@
     }
   }
 
-  /* ---------------- статусы субъектов ---------------- */
+  /* ---------------- слои окраски: статус и население ---------------- */
   const STATUSES = [
-    { k: "gfz",  name: "Города федерального значения", c: ["#f3a0a6", "#c23a47", "#6a1420"] },
-    { k: "krai", name: "Края",                         c: ["#f8c189", "#d1732a", "#723508"] },
-    { k: "obl",  name: "Области",                      c: ["#f7e6a0", "#cfae3c", "#6f5a12"] },
-    { k: "resp", name: "Республики",                   c: ["#a6e2bb", "#33925c", "#114628"] },
-    { k: "ao",   name: "Автономные округа",            c: ["#bfe9f8", "#47a3cc", "#154e6c"] },
-    { k: "aobl", name: "Автономная область",           c: ["#dcc0f4", "#8652bb", "#3a1c62"] }
+    { k: "gfz",  name: "Города федерального значения", c: "#c8404d" },
+    { k: "krai", name: "Края",                         c: "#dc7a2e" },
+    { k: "obl",  name: "Области",                      c: "#d6b23e" },
+    { k: "resp", name: "Республики",                   c: "#3a9a62" },
+    { k: "ao",   name: "Автономные округа",            c: "#4aa8d2" },
+    { k: "aobl", name: "Автономная область",           c: "#8d58c2" }
   ];
   // статусы для регионов, которых пока нет в data.csv
   const DEFAULT_STATUS = { 86: "республика", 87: "республика", 88: "область", 89: "область" };
@@ -127,32 +127,73 @@
     if (s.includes("област")) return "obl";
     return "";
   }
-  function buildStatusDefs() {
-    const defs = document.querySelector("svg defs");
-    for (const s of STATUSES) {
-      const g = el("linearGradient", { id: "st-" + s.k, x1: 0, y1: 0, x2: 1, y2: 1 }, defs);
-      [[0, s.c[0], .95], [.45, s.c[1], 1], [1, s.c[2], 1]].forEach(([o, c, a]) =>
-        el("stop", { offset: o, "stop-color": c, "stop-opacity": a }, g));
-    }
+  // население: границы классов, млн чел.
+  const POP_BREAKS = [0.3, 0.7, 1, 1.5, 2.5, 4];
+  const POP_CLASSES = [
+    { name: "до 300 тыс.",     c: "#33408f" },
+    { name: "300–700 тыс.",    c: "#4459ad" },
+    { name: "0,7–1 млн",       c: "#6276bd" },
+    { name: "1–1,5 млн",       c: "#9393b8" },
+    { name: "1,5–2,5 млн",     c: "#c2a874" },
+    { name: "2,5–4 млн",       c: "#e0bb56" },
+    { name: "более 4 млн",     c: "#f6da7e" }
+  ];
+  function popKey(pop) {
+    if (pop == null) return "pp-na";
+    const m = pop / 1e6; let i = 0;
+    while (i < POP_BREAKS.length && m >= POP_BREAKS[i]) i++;
+    return "pp-" + i;
   }
+  const LAYERS = {
+    status: { items: STATUSES.map(x => ({ k: "st-" + x.k, name: x.name, c: x.c })), of: r => r.st ? "st-" + r.st : "" },
+    pop: {
+      items: POP_CLASSES.map((x, i) => ({ k: "pp-" + i, name: x.name, c: x.c })).concat([{ k: "pp-na", name: "нет данных", c: "#5a5d72" }]),
+      of: r => popKey(r.pop)
+    }
+  };
+  const mix = (hex, to, t) => {
+    const a = parseInt(hex.slice(1), 16), b = parseInt(to.slice(1), 16);
+    const ch = (v, sh) => (v >> sh) & 255;
+    const m = (sh) => Math.round(ch(a, sh) + (ch(b, sh) - ch(a, sh)) * t);
+    return "#" + ((1 << 24) | (m(16) << 16) | (m(8) << 8) | m(0)).toString(16).slice(1);
+  };
+  function buildLayerDefs() {
+    const defs = document.querySelector("svg defs");
+    let css = "";
+    for (const [mode, L] of Object.entries(LAYERS)) for (const it of L.items) {
+      // мягкая «эмаль»: светлый блик сверху-слева, лёгкое (не тёмное) затенение снизу-справа
+      const g = el("linearGradient", { id: "g-" + it.k, x1: 0, y1: 0, x2: 1, y2: 1 }, defs);
+      [[0, mix(it.c, "#ffffff", .38)], [.5, it.c], [1, mix(it.c, "#000000", .16)]].forEach(([o, c]) =>
+        el("stop", { offset: o, "stop-color": c }, g));
+      css += `.${it.k}{--c:${it.c}}.mode-${mode} .region.${it.k},.mode-${mode} .lift.${it.k}{fill:url(#g-${it.k})}\n`;
+    }
+    const st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
+  }
+  const layerClass = (r) => LAYERS[state.mode] ? LAYERS[state.mode].of(r) : "";
   function applyMode() {
-    document.body.classList.toggle("mode-status", state.mode === "status");
+    document.body.classList.remove("mode-status", "mode-pop", "mode-layer");
+    if (LAYERS[state.mode]) document.body.classList.add("mode-" + state.mode, "mode-layer");
     document.querySelectorAll("#modeSeg button").forEach(b => {
       const on = b.dataset.mode === state.mode;
       b.classList.toggle("on", on); b.setAttribute("aria-checked", on);
     });
     store.set("frp.mode", state.mode);
+    renderLegend();
+    if (state.pinned) pinCard.innerHTML = cardHTML(byId.get(state.pinned), true);
   }
   function renderLegend() {
+    const L = LAYERS[state.mode]; const ul = $("#legend");
+    if (!L) return;
     const list = regions.filter(visible);
-    $("#legend").innerHTML = STATUSES.map(s => {
-      const n = list.filter(r => r.st === s.k).length;
-      return `<li data-st="${s.k}" class="st-${s.k}${n ? "" : " empty"}"><i class="legend__gem"></i><span>${s.name}</span><b>${n}</b></li>`;
+    ul.innerHTML = L.items.map(it => {
+      const n = list.filter(r => L.of(r) === it.k).length;
+      if (!n && it.k === "pp-na") return "";
+      return `<li data-k="${it.k}" class="${it.k}${n ? "" : " empty"}"><i class="legend__gem"></i><span>${it.name}</span><b>${n}</b></li>`;
     }).join("");
   }
-  function highlightStatus(k) {
+  function highlightLayer(k) {
     gRegions.classList.toggle("stdim", !!k);
-    for (const r of regions) r.path.classList.toggle("stsel", !!k && r.st === k);
+    for (const r of regions) r.path.classList.toggle("stsel", !!k && r.path.classList.contains(k));
   }
 
   function totals() {
@@ -186,7 +227,7 @@
     pts.sort((a, b) => (b.phi - a.phi) || (a.k - b.k));
     const dr = (Rout - Rin) / (rows - 1);
     const along = cnt[0] > 1 ? A * Rin / (cnt[0] - 1) : dr;
-    pts.rr = 0.43 * Math.min(dr, along);
+    pts.rr = (cfg.k || 0.43) * Math.min(dr, along);
     return pts;
   }
 
@@ -196,7 +237,7 @@
   const borders = {};
 
   function buildMap() {
-    for (const r of regions) r.path = el("path", { d: r.d, class: "region" + (r.st ? " st-" + r.st : ""), "data-id": r.id }, gRegions);
+    for (const r of regions) r.path = el("path", { d: r.d, class: ["region", r.st ? "st-" + r.st : "", popKey(r.pop)].join(" ").trim(), "data-id": r.id }, gRegions);
     const msk = byId.get(10); if (msk) gRegions.appendChild(msk.path); // Москва поверх области
     borders.fo = el("path", { d: GEO.meshes.fo, class: "fo-border" }, gBorders);
     if (GEO.meshes.foNew) borders.foNew = el("path", { d: GEO.meshes.foNew, class: "fo-border" }, gBorders);
@@ -229,7 +270,7 @@
 
   let liftEl = null;
   function makeLift(r, layer, extra) {
-    const p = el("path", { d: r.d, class: "lift" + (r.st ? " st-" + r.st : "") + (extra ? " " + extra : "") }, layer);
+    const p = el("path", { d: r.d, class: ["lift", r.st ? "st-" + r.st : "", popKey(r.pop), extra || ""].join(" ").trim() }, layer);
     const rect = svg.getBoundingClientRect();
     const pxPerUnit = rect.width / state.view.w;
     const size = Math.max(r.b[2] - r.b[0], r.b[3] - r.b[1]) * pxPerUnit;
@@ -246,6 +287,71 @@
   const sCount = el("text", { x: SEN.cx, y: SEN.cy + 18, "text-anchor": "middle", class: "hall-count" }, sv);
   const sSub = el("text", { x: SEN.cx, y: SEN.cy + 56, "text-anchor": "middle", class: "hall-sub" }, sv);
   const sSub2 = el("text", { x: SEN.cx, y: SEN.cy + 84, "text-anchor": "middle", class: "hall-sub2" }, sv);
+  const sSub3 = el("text", { x: SEN.cx, y: SEN.cy + 106, "text-anchor": "middle", class: "hall-sub2" }, sv);
+  const sQ = qmark(sv, "senate");
+
+  /* Рассадка по тройкам: места раскладываются по рядам подковы как обычно, затем жадным
+     проходом слева направо собираются тройки соседних мест (каждая тройка — связная цепочка
+     соседей). Тройки идут по углу, поэтому федеральный округ занимает сплошной сектор.
+     Перебираем несколько настроек эвристики и берём лучшую; для известных размеров — сразу. */
+  const TRIPLE_PARAMS = {
+    249: { win: 0, wd: 0, wp: 50, wk: 0, cd: 0.2, cp: 1 },
+    255: { win: 0.1, wd: 10, wp: 50, wk: -0.5, cd: 0, cp: 0 },
+    261: { win: 0.03, wd: 0, wp: 50, wk: -0.5, cd: 0.2, cp: 0 },
+    267: { win: 0.03, wd: 3, wp: 50, wk: 0.5, cd: 0.2, cp: 3 }
+  };
+  const tripleCache = new Map();
+  function seatTriples(pts) {
+    const n = pts.length;
+    if (tripleCache.has(n)) return tripleCache.get(n);
+    const d = (a, b) => Math.hypot(pts[a].x - pts[b].x, pts[a].y - pts[b].y);
+    const nnd = pts.map((_, i) => { let m = 1e9; for (let j = 0; j < n; j++) if (j !== i) m = Math.min(m, d(i, j)); return m; });
+    const pitch = [...nnd].sort((a, b) => a - b)[n >> 1];
+    const nb = pts.map((_, i) => { const a = []; for (let j = 0; j < n; j++) if (j !== i && d(i, j) <= 1.55 * pitch) a.push(j); return a; });
+    const run = (P) => {
+      const free = new Uint8Array(n).fill(1); let left = n;
+      const deg = (i) => { let c = 0; for (const j of nb[i]) if (free[j]) c++; return c; };
+      const out = [];
+      while (left) {
+        let maxphi = -1e9; for (let i = 0; i < n; i++) if (free[i] && pts[i].phi > maxphi) maxphi = pts[i].phi;
+        let seed = -1, bs = 1e9;
+        for (let i = 0; i < n; i++) if (free[i] && pts[i].phi >= maxphi - P.win) {
+          const sc = deg(i) * P.wd - (pts[i].phi - maxphi) * P.wp + pts[i].k * P.wk; if (sc < bs) { bs = sc; seed = i; }
+        }
+        free[seed] = 0; left--; const g = [seed];
+        while (g.length < SEATS_PER_REGION && left) {
+          const cand = new Set(); for (const a of g) for (const j of nb[a]) if (free[j]) cand.add(j);
+          const pool = cand.size ? [...cand] : [...Array(n).keys()].filter(j => free[j]);
+          let best = -1, bv = 1e9;
+          for (const j of pool) {
+            free[j] = 0; const v = Math.max(...g.map(a => d(a, j))) / pitch + P.cd * deg(j) - P.cp * (pts[j].phi - maxphi); free[j] = 1;
+            if (v < bv) { bv = v; best = j; }
+          }
+          free[best] = 0; left--; g.push(best);
+        }
+        out.push(g);
+      }
+      let worst = 0, sum = 0;
+      for (const g of out) {
+        if (g.length < 3) continue;
+        const e = [d(g[0], g[1]), d(g[0], g[2]), d(g[1], g[2])].map(x => x / pitch);
+        worst = Math.max(worst, Math.min(Math.max(e[0], e[1]), Math.max(e[0], e[2]), Math.max(e[1], e[2])));
+        sum += Math.max(...e);
+      }
+      return { out, worst, sum };
+    };
+    let B = null;
+    if (TRIPLE_PARAMS[n]) B = run(TRIPLE_PARAMS[n]);
+    else {
+      for (const win of [0, .03, .06, .1]) for (const wd of [0, 3, 10]) for (const wp of [50, 200]) for (const wk of [0, .5, -.5])
+        for (const cd of [0, .2, .4]) for (const cp of [0, 1, 3]) {
+          const r = run({ win, wd, wp, wk, cd, cp });
+          if (!B || r.worst < B.worst - 1e-6 || (Math.abs(r.worst - B.worst) < 1e-6 && r.sum < B.sum)) B = r;
+        }
+    }
+    tripleCache.set(n, B.out);
+    return B.out;
+  }
 
   function buildSeats() {
     for (const r of regions) {
@@ -279,35 +385,126 @@
   function layoutSenate() {
     const list = orderedVisible();
     const pts = arcLayout(SEN, list.length * SEATS_PER_REGION);
+    const groups = seatTriples(pts);
     let i = 0; const foRange = {}; foCount = {};
     for (const r of regions) if (!visible(r)) r.seats.forEach(g => g.classList.add("off"));
     for (const r of list) {
       foCount[r.fo] = (foCount[r.fo] || 0) + 1;
-      for (const g of r.seats) {
-        const p = pts[i++];
+      const grp = groups[i++];
+      const fr = foRange[r.fo] || (foRange[r.fo] = { hi: -Infinity, lo: Infinity });
+      r.seats.forEach((g, q) => {
+        const p = pts[grp[q]];
         g.style.transform = `translate(${p.x.toFixed(2)}px,${p.y.toFixed(2)}px)`;
         g.classList.remove("off");
-        const fr = foRange[r.fo] || (foRange[r.fo] = { hi: -Infinity, lo: Infinity });
         fr.hi = Math.max(fr.hi, p.phi); fr.lo = Math.min(fr.lo, p.phi);
-      }
+      });
     }
     drawArcs(foRange);
     if (state.fo && !foCount[state.fo]) state.fo = null;
+    if (state.foPreview && !foCount[state.foPreview]) state.foPreview = null;
     applyFO();
   }
 
+  const regionsWord = (n) => plural(n, "регион", "региона", "регионов");
+  const genitive = (adj) => adj.replace(/ый$|ий$/, "ого").replace(/-Западный/, "-Западного").replace(/-Кавказский/, "-Кавказского");
+  // Единый вид подписей: число → «мест в …» → (название округа) → значок «?» с формулой
   function senateCenter() {
-    const T = totals();
-    if (state.fo) {
-      const n = foCount[state.fo] || 0;
-      animateNumber(sCount, n * SEATS_PER_REGION);
-      sSub.textContent = `${seatsWord(n * SEATS_PER_REGION)} · ${state.fo}`;
-      sSub2.textContent = `${FO_NAMES[state.fo]} округ · ${n} × ${SEATS_PER_REGION}`;
+    const T = totals(); const f = activeFO();
+    if (f) {
+      const N = (foCount[f] || 0) * SEATS_PER_REGION;
+      animateNumber(sCount, N);
+      sSub.textContent = `${seatsWord(N)} в Сенате`;
+      sSub2.textContent = FO_NAMES[f];
+      sSub3.textContent = "федеральный округ";
+      sQ.setAttribute("transform", `translate(${SEN.cx},${SEN.cy + 134})`);
     } else {
       animateNumber(sCount, T.seats);
       sSub.textContent = `${seatsWord(T.seats)} в Сенате`;
-      sSub2.textContent = `${T.list.length} ${plural(T.list.length, "регион", "региона", "регионов")} × ${SEATS_PER_REGION}`;
+      sSub2.textContent = ""; sSub3.textContent = "";
+      sQ.setAttribute("transform", `translate(${SEN.cx},${SEN.cy + 88})`);
     }
+    if (math.ctx === "senate") renderMath();
+  }
+
+  /* ---------------- «?»: формула расчёта ---------------- */
+  function qmark(parent, ctx) {
+    const g = el("g", { class: "qmark", "data-math": ctx, tabindex: 0, role: "button", "aria-label": "Как считается число мест" }, parent);
+    el("circle", { r: 12.5, class: "qmark__ring" }, g);
+    el("circle", { r: 10.6, class: "qmark__face" }, g);
+    const t = el("text", { y: 5.5, "text-anchor": "middle", class: "qmark__q" }, g); t.textContent = "?";
+    return g;
+  }
+  const math = { ctx: null, pinned: false, anchor: null };
+  const CEIL_X = `<math><mo fence="true">⌈</mo><mi>x</mi><mo fence="true">⌉</mo></math>`;
+  const mathPop = document.getElementById("mathPop");
+  const mn = (v, d = 0) => `<mn>${fmt(v, d)}</mn>`;
+  function mathHTML(ctx) {
+    const T = totals();
+    if (ctx === "senate") {
+      const f = activeFO();
+      if (f) {
+        const n = foCount[f] || 0, ab = `<mtext>${f}</mtext>`;
+        return `
+          <p class="mp__eyebrow">● Сенат · ${FO_NAMES[f]} федеральный округ</p>
+          <math display="block"><msub><mi>S</mi>${ab}</msub><mo>=</mo><mn>3</mn><mo>·</mo><msub><mi>n</mi>${ab}</msub><mo>=</mo><mn>3</mn><mo>·</mo>${mn(n)}<mo>=</mo>${mn(3 * n)}</math>
+          <p class="mp__where">где <i>S</i><sub>${f}</sub> — число мест от округа, <i>n</i><sub>${f}</sub> — число его регионов<sup>1</sup>.</p>
+          <p class="mp__text">Каждый регион направляет в Сенат трёх сенаторов, поэтому вес федерального округа определяется только числом его регионов, а не населением.</p>
+          <ol class="mp__notes"><li>Учитываются регионы, выбранные ползунком «Состав федерации».</li></ol>`;
+      }
+      const n = T.list.length;
+      return `
+        <p class="mp__eyebrow">● Сенат</p>
+        <math display="block"><mi>S</mi><mo>=</mo><mn>3</mn><mo>·</mo><mi>n</mi><mo>=</mo><mn>3</mn><mo>·</mo>${mn(n)}<mo>=</mo>${mn(3 * n)}</math>
+        <p class="mp__where">где <i>S</i> — число мест в Сенате, <i>n</i> — число регионов<sup>1</sup>.</p>
+        <p class="mp__text">Сенат — палата равного представительства регионов: каждый субъект федерации направляет трёх сенаторов независимо от численности населения.</p>
+        <ol class="mp__notes"><li>Учитываются регионы, выбранные ползунком «Состав федерации» (сейчас ${n}).</li></ol>`;
+    }
+    const P = T.pop, D = T.duma, root = P ? Math.cbrt(P) : 0;
+    const miss = T.list.length - T.withPop.length;
+    return `
+      <p class="mp__eyebrow">● Дума</p>
+      <math display="block"><mi>D</mi><mo>=</mo><mo fence="true">⌈</mo><mroot><mi>P</mi><mn>3</mn></mroot><mo fence="true">⌉</mo></math>
+      <math display="block"><mi>D</mi><mo>=</mo><mo fence="true">⌈</mo><mroot>${mn(P)}<mn>3</mn></mroot><mo fence="true">⌉</mo><mo>=</mo><mo fence="true">⌈</mo><mn>${fmt(root, 2)}…</mn><mo fence="true">⌉</mo><mo>=</mo>${mn(D)}</math>
+      <p class="mp__where">где <i>D</i> — число мест в Думе, <i>P</i> — население страны<sup>1</sup>, ${CEIL_X} — округление вверх<sup>2</sup>.</p>
+      <p class="mp__text">Размер Думы следует «правилу кубического корня» Р. Таагеперы: численность нижней палаты парламента примерно равна кубическому корню из населения страны. Так палата растёт вместе с населением, но медленно.</p>
+      <ol class="mp__notes">
+        <li>Сумма населения регионов, выбранных ползунком и имеющих данные в data.csv${miss ? ` (без ${miss} ${plural(miss, "региона", "регионов", "регионов")} без данных)` : ""}.</li>
+        <li>${CEIL_X} — наименьшее целое число, не меньшее <i>x</i>.</li>
+      </ol>`;
+  }
+  function renderMath() {
+    if (!math.ctx) return;
+    mathPop.innerHTML = mathHTML(math.ctx) + `<p class="mp__foot">${math.pinned ? "Закреплено · клик вне окна, ПКМ или Esc — закрыть" : "Клик по «?» — закрепить"}</p>`;
+    placeMath();
+  }
+  function placeMath() {
+    if (!math.anchor) return;
+    const r = math.anchor.getBoundingClientRect();
+    const w = mathPop.offsetWidth, h = mathPop.offsetHeight;
+    let left = r.left + r.width / 2 - w / 2, top = r.bottom + 12;
+    if (top + h > innerHeight - 12) top = r.top - h - 12;
+    left = Math.max(12, Math.min(left, innerWidth - w - 12)); top = Math.max(12, top);
+    mathPop.style.left = (left + scrollX) + "px"; mathPop.style.top = (top + scrollY) + "px";
+  }
+  function showMath(anchor, pin) {
+    math.ctx = anchor.dataset.math; math.anchor = anchor; math.pinned = !!pin;
+    mathPop.classList.add("show"); mathPop.classList.toggle("pinned", math.pinned);
+    mathPop.setAttribute("aria-hidden", "false");
+    renderMath();
+  }
+  function hideMath() {
+    math.ctx = null; math.anchor = null; math.pinned = false;
+    mathPop.classList.remove("show", "pinned"); mathPop.setAttribute("aria-hidden", "true");
+  }
+  function bindMath() {
+    document.querySelectorAll(".qmark").forEach(q => {
+      q.addEventListener("pointerenter", () => { if (!math.pinned) showMath(q, false); });
+      q.addEventListener("pointerleave", () => { if (!math.pinned) hideMath(); });
+      q.addEventListener("click", (e) => { e.stopPropagation(); if (math.pinned && math.anchor === q) hideMath(); else showMath(q, true); });
+      q.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showMath(q, true); } });
+    });
+    document.addEventListener("click", (e) => { if (math.pinned && !mathPop.contains(e.target)) hideMath(); });
+    window.addEventListener("scroll", () => { if (math.ctx && !math.pinned) hideMath(); }, { passive: true });
   }
 
   const foTags = {}, foArcs = {};
@@ -325,43 +522,51 @@
       const a2 = (next ? (cur.lo + next.hi) / 2 : cur.lo - 0.02) + gap;
       const [x1, y1] = P(R, a1), [x2, y2] = P(R, a2);
       const large = (a1 - a2) > Math.PI ? 1 : 0;
-      foArcs[f] = el("path", { d: `M${x1.toFixed(1)},${y1.toFixed(1)} A${R},${R} 0 ${large} 1 ${x2.toFixed(1)},${y2.toFixed(1)}`, class: "fo-arc" }, gArcs);
+      const d = `M${x1.toFixed(1)},${y1.toFixed(1)} A${R},${R} 0 ${large} 1 ${x2.toFixed(1)},${y2.toFixed(1)}`;
+      const tag = el("g", { class: "fo-tag", "data-fo": f, tabindex: 0, role: "button" }, gArcs);
+      el("path", { d, class: "arc-hit" }, tag);
+      foArcs[f] = el("path", { d, class: "fo-arc" }, tag);
       for (const a of [a1, a2]) {
         const [ax, ay] = P(R - 4, a), [bx, by] = P(R + 4, a);
-        el("line", { x1: ax, y1: ay, x2: bx, y2: by, class: "fo-tick" }, gArcs);
+        el("line", { x1: ax, y1: ay, x2: bx, y2: by, class: "fo-tick" }, tag);
       }
       const mid = (a1 + a2) / 2; const [lx, ly] = P(RL, mid); const c = Math.cos(mid);
-      const tag = el("g", { class: "fo-tag", "data-fo": f, tabindex: 0, role: "button" }, gArcs);
       el("circle", { cx: lx.toFixed(1), cy: ly.toFixed(1), r: 26, class: "hit" }, tag);
       const t = el("text", { x: lx.toFixed(1), y: (ly + 4).toFixed(1), class: "fo-label",
         "text-anchor": c > .35 ? "start" : c < -.35 ? "end" : "middle" }, tag);
       const n = (foCount[f] || 0) * SEATS_PER_REGION;
       t.innerHTML = `${f}<tspan class="fo-count" dx="6">${n}</tspan>`;
-      const title = el("title", {}, tag); title.textContent = `${FO_NAMES[f]} федеральный округ: ${n} ${seatsWord(n)}. Нажмите, чтобы выделить`;
+      const title = el("title", {}, tag); title.textContent = `${FO_NAMES[f]} федеральный округ: ${n} ${seatsWord(n)}. Нажмите, чтобы закрепить выделение`;
       foTags[f] = tag;
     });
   }
 
+  const activeFO = () => state.foPreview || state.fo;
   function selectFO(f) { state.fo = state.fo === f ? null : f; applyFO(); }
+  function previewFO(f) { if (state.foPreview === f) return; state.foPreview = f; applyFO(); }
   function applyFO() {
+    const af = activeFO();
     for (const r of regions) {
-      const on = !!state.fo && r.fo === state.fo && visible(r);
+      const on = !!af && r.fo === af && visible(r);
       r.seats.forEach(g => g.classList.toggle("fosel", on));
       r.path.classList.toggle("fosel", on);
     }
-    gSeats.classList.toggle("fodim", !!state.fo);
-    gRegions.classList.toggle("fodim", !!state.fo);
-    for (const f in foTags) { foTags[f].classList.toggle("sel", f === state.fo); foArcs[f] && foArcs[f].classList.toggle("sel", f === state.fo); }
+    gSeats.classList.toggle("fodim", !!af);
+    gRegions.classList.toggle("fodim", !!af);
+    for (const f in foTags) {
+      foTags[f].classList.toggle("sel", f === af); foTags[f].classList.toggle("pinned", f === state.fo);
+      foArcs[f] && foArcs[f].classList.toggle("sel", f === af);
+    }
     senateCenter();
   }
 
   /* ---------------- Дума (арка) ---------------- */
   const dv = $("#duma");
-  const DUMA = { cx: 380, cy: 445, Rout: 348, Rin: 168, rows: 11, A: Math.PI };
+  const DUMA = { cx: 380, cy: 445, Rout: 350, Rin: 168, rows: 11, A: Math.PI, k: 0.31 };
   const gDSeats = el("g", { class: "seats", filter: "url(#softShadow)" }, dv);
   const dCount = el("text", { x: DUMA.cx, y: DUMA.cy - 56, "text-anchor": "middle", class: "hall-count" }, dv);
   const dSub = el("text", { x: DUMA.cx, y: DUMA.cy - 20, "text-anchor": "middle", class: "hall-sub" }, dv);
-  const dSub2 = el("text", { x: DUMA.cx, y: DUMA.cy + 8, "text-anchor": "middle", class: "hall-sub2" }, dv);
+  const dQ = qmark(dv, "duma"); dQ.setAttribute("transform", `translate(${DUMA.cx},${DUMA.cy + 12})`);
   const dPool = [];
 
   function layoutDuma() {
@@ -380,7 +585,7 @@
     });
     animateNumber(dCount, N);
     dSub.textContent = `${seatsWord(N)} в Думе`;
-    dSub2.textContent = T.pop ? `∛ ${fmt(T.pop / 1e6, 2)} млн = ${fmt(Math.cbrt(T.pop), 1)} ↑ ${N}` : "";
+    if (math.ctx === "duma") renderMath();
   }
 
   /* ---------------- палаты ---------------- */
@@ -392,7 +597,7 @@
       c.classList.add(n === main ? "pos-main" : n === left ? "pos-left" : "pos-right");
     });
     store.set("frp.chamber", main);
-    if (main !== "senate" && state.fo) { state.fo = null; applyFO(); }
+    if (main !== "senate" && (state.fo || state.foPreview)) { state.fo = state.foPreview = null; applyFO(); }
   }
 
   /* ---------------- карточка ---------------- */
@@ -427,7 +632,7 @@
     }
     const n = SEATS_PER_REGION;
     return `
-      <p class="card__eyebrow"><span><em class="card__dot${r.st ? " st-" + r.st : ""}"></em>${fo}</span><i>${r.no ? "№ " + esc(r.no) : ""}</i></p>
+      <p class="card__eyebrow"><span><em class="card__dot ${layerClass(r)}"></em>${fo}</span><i>${r.no ? "№ " + esc(r.no) : ""}</i></p>
       <h3 class="card__title">${esc(r.name)}</h3>
       ${body}
       <div class="card__seats"><span>Сенат</span><b>${n} ${plural(n, "сенатор", "сенатора", "сенаторов")} ${pearlsSVG(n)}</b></div>
@@ -593,7 +798,9 @@
     gSeats.addEventListener("pointerleave", () => setHover(null));
     gSeats.addEventListener("click", (e) => { const id = idFrom(e.target); if (id) pin(id, e.clientX, e.clientY); });
     // округа у подковы
-    gArcs.addEventListener("click", (e) => { const t = e.target.closest(".fo-tag"); if (t) selectFO(t.dataset.fo); });
+    gArcs.addEventListener("click", (e) => { const t = e.target.closest(".fo-tag"); if (t) { state.foPreview = null; selectFO(t.dataset.fo); } });
+    gArcs.addEventListener("pointerover", (e) => { const t = e.target.closest(".fo-tag"); previewFO(t ? t.dataset.fo : null); });
+    gArcs.addEventListener("pointerleave", () => previewFO(null));
     gArcs.addEventListener("keydown", (e) => {
       const t = e.target.closest && e.target.closest(".fo-tag");
       if (t && (e.key === "Enter" || e.key === " ")) { selectFO(t.dataset.fo); e.preventDefault(); }
@@ -601,18 +808,19 @@
 
     // ПКМ / Esc: сначала открепляем карточку, затем снимаем выделение округа
     const reset = () => {
+      if (math.pinned) { hideMath(); return true; }
       if (unpin()) return true;
       if (state.fo) { state.fo = null; applyFO(); return true; }
       return false;
     };
-    document.addEventListener("contextmenu", (e) => { if (state.pinned || state.fo) { e.preventDefault(); reset(); } });
+    document.addEventListener("contextmenu", (e) => { if (state.pinned || state.fo || math.pinned) { e.preventDefault(); reset(); } });
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeDrawer(); reset(); } });
 
     // палаты
     document.querySelectorAll(".chamber").forEach(c => c.querySelector(".chamber__mini").addEventListener("click", () => {
       const n = c.dataset.chamber;
       if (n === "veche") return toast("Вече — в разработке.");
-      state.chamber = n; applyChamber();
+      state.chamber = n; hideMath(); applyChamber();
     }));
 
     // меню
@@ -667,10 +875,11 @@
       : "* по данным data.csv";
     // подписи ползунка
     const count = (lv) => regions.filter(r => r.group === "core" || (r.group === "crimea" && LEVELS[lv].crimea) || (r.group === "new" && LEVELS[lv].new)).length;
-    const subs = ["", "Республика Крым, г. Севастополь", "ДНР, ЛНР, Запорожская и Херсонская обл."];
+    const details = ["", "", "ДНР, ЛНР, Запорожская и Херсонская обл."];
     for (let lv = 0; lv < 3; lv++) {
       const n = count(lv);
-      $("#lv" + lv).innerHTML = (subs[lv] ? subs[lv] + " · " : "") + `<b>${n} ${plural(n, "регион", "региона", "регионов")}, ${n * SEATS_PER_REGION} ${seatsWord(n * SEATS_PER_REGION)}</b>`;
+      $("#lv" + lv).innerHTML = (details[lv] ? `${details[lv]} · ` : "") +
+        `<b>${n} ${regionsWord(n)}, ${n * SEATS_PER_REGION} ${seatsWord(n * SEATS_PER_REGION)}</b>`;
     }
   }
 
@@ -685,13 +894,13 @@
   /* ---------------- старт ---------------- */
   (async () => {
     attachData(await loadCSV());
-    buildMap(); buildSeats(); drawIcons(); bind(); bindSlider();
+    buildMap(); buildSeats(); drawIcons(); bind(); bindSlider(); bindMath();
     applyChamber(); renderSlider();
-    buildStatusDefs(); applyMode();
+    buildLayerDefs(); applyMode();
     document.querySelectorAll("#modeSeg button").forEach(b => b.addEventListener("click", () => { state.mode = b.dataset.mode; applyMode(); }));
     const legend = $("#legend");
-    legend.addEventListener("pointerover", (e) => { const li = e.target.closest("li"); highlightStatus(li && !li.classList.contains("empty") ? li.dataset.st : null); });
-    legend.addEventListener("pointerleave", () => highlightStatus(null));
+    legend.addEventListener("pointerover", (e) => { const li = e.target.closest("li"); highlightLayer(li && !li.classList.contains("empty") ? li.dataset.k : null); });
+    legend.addEventListener("pointerleave", () => highlightLayer(null));
     requestAnimationFrame(update);
   })();
 })();
