@@ -191,13 +191,13 @@ main{max-width:1320px;margin:0 auto;padding:0 28px 40px}
   box-shadow:0 0 0 1.5px #fbe9b4,0 0 12px rgba(246,214,130,.7),0 3px 6px rgba(0,0,0,.7);transition:top .35s cubic-bezier(.3,1.3,.5,1)}
 .slider.dragging .slider__knob,.slider.dragging .slider__fill{transition:none}
 .slider__labels{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;flex:1}
-.slider__labels li{height:66px;display:flex;flex-direction:column;justify-content:center;cursor:pointer;opacity:.5;transition:opacity .25s}
+.slider__labels li{height:72px;display:flex;flex-direction:column;justify-content:center;cursor:pointer;opacity:.5;transition:opacity .25s}
 .slider__labels li.inc{opacity:.85}
 .slider__labels li.cur{opacity:1}
 .slider__labels li:hover{opacity:1}
-.slider__name{font-family:var(--serif);font-weight:600;font-size:21px;line-height:1.1;color:var(--text)}
+.slider__name{font-family:var(--sans);font-weight:700;font-size:15px;line-height:1.2;letter-spacing:.22em;text-transform:uppercase;color:var(--gold-hi)}
 .slider__sub{font-size:12px;color:var(--muted);line-height:1.4;margin-top:2px}
-.slider__sub b{color:var(--gold);font-weight:600}
+.slider__sub b{color:var(--gold);font-weight:600;white-space:nowrap}
 
 .stats{margin:20px 0 0;display:grid;grid-template-columns:1fr 1fr;gap:16px 14px}
 .stats div{margin:0}

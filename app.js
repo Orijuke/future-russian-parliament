@@ -128,15 +128,17 @@
     return "";
   }
   // население: границы классов, млн чел.
-  const POP_BREAKS = [0.3, 0.7, 1, 1.5, 2.5, 4];
+  const POP_BREAKS = [0.4, 0.6, 0.8, 1, 1.5, 2, 2.5, 4];
   const POP_CLASSES = [
-    { name: "до 300 тыс.",     c: "#33408f" },
-    { name: "300–700 тыс.",    c: "#4459ad" },
-    { name: "0,7–1 млн",       c: "#6276bd" },
-    { name: "1–1,5 млн",       c: "#9393b8" },
-    { name: "1,5–2,5 млн",     c: "#c2a874" },
-    { name: "2,5–4 млн",       c: "#e0bb56" },
-    { name: "более 4 млн",     c: "#f6da7e" }
+    { name: "до 400 тыс.", c: "#33408f" },
+    { name: "400–600 тыс.", c: "#4053a6" },
+    { name: "600–800 тыс.", c: "#5368b5" },
+    { name: "0,8–1 млн", c: "#6e7dbc" },
+    { name: "1–1,5 млн", c: "#9393b8" },
+    { name: "1,5–2 млн", c: "#b6a385" },
+    { name: "2–2,5 млн", c: "#d1b265" },
+    { name: "2,5–4 млн", c: "#e6c360" },
+    { name: "4 млн и более", c: "#f6da7e" }
   ];
   function popKey(pop) {
     if (pop == null) return "pp-na";
@@ -722,7 +724,7 @@
 
   /* ---------------- ползунок состава ---------------- */
   const slider = $("#slider"), rail = slider.querySelector(".slider__rail"), knob = $("#sliderKnob"), fill = $("#sliderFill");
-  const STOP_H = 66;
+  const STOP_H = 72;
   function stopY(v) { return STOP_H / 2 + v * STOP_H - 6; }
   function renderSlider(yOverride) {
     const y = yOverride != null ? yOverride : stopY(state.level);
@@ -733,7 +735,7 @@
       const v = +li.dataset.v; li.classList.toggle("cur", v === state.level); li.classList.toggle("inc", v <= state.level);
     });
     slider.setAttribute("aria-valuenow", state.level);
-    slider.setAttribute("aria-valuetext", slider.querySelector(`li[data-v="${state.level}"] .slider__name`).textContent);
+    slider.setAttribute("aria-valuetext", slider.querySelector(`li[data-v="${state.level}"]`).textContent.trim());
   }
   function setLevel(v) {
     v = Math.max(0, Math.min(2, v));
@@ -875,7 +877,7 @@
       : "* по данным data.csv";
     // подписи ползунка
     const count = (lv) => regions.filter(r => r.group === "core" || (r.group === "crimea" && LEVELS[lv].crimea) || (r.group === "new" && LEVELS[lv].new)).length;
-    const details = ["", "", "ДНР, ЛНР, Запорожская и Херсонская обл."];
+    const details = ["После объединения регионов", "Присоединение Республики Крым и Севастополя", "Присоединение ДНР, ЛНР, Запорожской и Херсонской областей"];
     for (let lv = 0; lv < 3; lv++) {
       const n = count(lv);
       $("#lv" + lv).innerHTML = (details[lv] ? `${details[lv]} · ` : "") +
