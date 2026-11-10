@@ -42,6 +42,9 @@ body::before{
 .bg-rings--left{left:-620px;right:auto;top:auto;bottom:-640px;width:1000px;height:1000px}
 
 main,.topbar{position:relative;z-index:1}
+.topbar{z-index:30}
+.topbar .eyebrow--plain{transition:opacity .3s}
+body.drawer-open .topbar .eyebrow--plain{opacity:0}
 main{max-width:1320px;margin:0 auto;padding:0 28px 40px}
 
 /* ---------- ВЕРХНЯЯ ПОЛОСА ---------- */
@@ -67,11 +70,11 @@ main{max-width:1320px;margin:0 auto;padding:0 28px 40px}
 .burger[aria-expanded="true"] span:nth-child(2){opacity:0}
 .burger[aria-expanded="true"] span:nth-child(3){transform:translateY(-6.5px) rotate(-45deg)}
 
-.drawer{position:fixed;top:0;right:0;height:100vh;width:min(380px,92vw);z-index:25;
+.drawer{position:fixed;top:0;right:0;height:100vh;width:min(320px,88vw);overflow-y:auto;z-index:25;
   background:linear-gradient(180deg,rgba(14,21,74,.97),rgba(6,10,36,.98));border-left:1px solid var(--brass-line);
   box-shadow:-20px 0 60px rgba(0,0,0,.5);transform:translateX(105%);transition:transform .45s cubic-bezier(.2,.8,.2,1)}
 .drawer.open{transform:none}
-.drawer__inner{padding:96px 32px 32px;color:var(--muted);font-size:14px;line-height:1.6}
+.drawer__inner{padding:84px 26px 26px;color:var(--muted);font-size:14px;line-height:1.6}
 .drawer__inner p{margin:0 0 22px}
 .drawer__title{font-family:var(--serif);font-weight:600;font-size:28px;line-height:1.1;color:var(--text);margin:0 0 14px}
 .drawer__list{list-style:none;padding:0;margin:0 0 24px}
@@ -277,7 +280,7 @@ main{max-width:1320px;margin:0 auto;padding:0 28px 40px}
 
 .legend{list-style:none;margin:0;padding:0;overflow:hidden;max-height:0;opacity:0;transition:max-height .45s ease, opacity .35s, margin .35s}
 .mode-layer .legend{max-height:340px;opacity:1;margin-top:12px}
-.legend li{display:flex;align-items:center;gap:10px;padding:5px 2px;font-size:13px;color:var(--text);cursor:default;border-radius:8px;transition:background .2s}
+.legend li{display:flex;align-items:center;gap:10px;padding:5px 6px;font-size:13px;color:var(--text);cursor:pointer;border-radius:8px;transition:background .2s}
 .legend li:hover{background:rgba(217,184,108,.08)}
 .legend li.empty{opacity:.35}
 .legend li span{flex:1}
@@ -320,3 +323,5 @@ main{max-width:1320px;margin:0 auto;padding:0 28px 40px}
 .mp__foot{margin:10px 0 0;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
 .mathpop.pinned .mp__foot{color:var(--gold)}
 .mathpop math:not([display]){font-size:1.08em;color:var(--text)}
+.legend li.sel{background:rgba(217,184,108,.16);box-shadow:inset 0 0 0 1px rgba(217,184,108,.5)}
+.legend li.empty{cursor:default}

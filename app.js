@@ -128,15 +128,13 @@
     return "";
   }
   // население: границы классов, млн чел.
-  const POP_BREAKS = [0.4, 0.6, 0.8, 1, 1.5, 2, 2.5, 4];
+  const POP_BREAKS = [0.4, 0.6, 1, 1.5, 2.5, 4];
   const POP_CLASSES = [
     { name: "до 400 тыс.", c: "#33408f" },
     { name: "400–600 тыс.", c: "#4053a6" },
-    { name: "600–800 тыс.", c: "#5368b5" },
-    { name: "0,8–1 млн", c: "#6e7dbc" },
+    { name: "0,6–1 млн", c: "#6073b9" },
     { name: "1–1,5 млн", c: "#9393b8" },
-    { name: "1,5–2 млн", c: "#b6a385" },
-    { name: "2–2,5 млн", c: "#d1b265" },
+    { name: "1,5–2,5 млн", c: "#c4ab75" },
     { name: "2,5–4 млн", c: "#e6c360" },
     { name: "4 млн и более", c: "#f6da7e" }
   ];
@@ -180,6 +178,7 @@
       b.classList.toggle("on", on); b.setAttribute("aria-checked", on);
     });
     store.set("frp.mode", state.mode);
+    state.layerPick = null; highlightLayer(null);
     renderLegend();
     if (state.pinned) pinCard.innerHTML = cardHTML(byId.get(state.pinned), true);
   }
@@ -190,10 +189,16 @@
     ul.innerHTML = L.items.map(it => {
       const n = list.filter(r => L.of(r) === it.k).length;
       if (!n && it.k === "pp-na") return "";
-      return `<li data-k="${it.k}" class="${it.k}${n ? "" : " empty"}"><i class="legend__gem"></i><span>${it.name}</span><b>${n}</b></li>`;
+      return `<li data-k="${it.k}" class="${it.k}${n ? "" : " empty"}${state.layerPick === it.k ? " sel" : ""}"><i class="legend__gem"></i><span>${it.name}</span><b>${n}</b></li>`;
     }).join("");
   }
+  function pickLayer(k) {
+    state.layerPick = state.layerPick === k ? null : k;
+    $("#legend").querySelectorAll("li").forEach(li => li.classList.toggle("sel", li.dataset.k === state.layerPick));
+    highlightLayer(null);
+  }
   function highlightLayer(k) {
+    k = k || state.layerPick;
     gRegions.classList.toggle("stdim", !!k);
     for (const r of regions) r.path.classList.toggle("stsel", !!k && r.path.classList.contains(k));
   }
@@ -448,7 +453,8 @@
         const n = foCount[f] || 0, ab = `<mtext>${f}</mtext>`;
         return `
           <p class="mp__eyebrow">● Сенат · ${FO_NAMES[f]} федеральный округ</p>
-          <math display="block"><msub><mi>S</mi>${ab}</msub><mo>=</mo><mn>3</mn><mo>·</mo><msub><mi>n</mi>${ab}</msub><mo>=</mo><mn>3</mn><mo>·</mo>${mn(n)}<mo>=</mo>${mn(3 * n)}</math>
+          <math display="block"><msub><mi>S</mi>${ab}</msub><mo>=</mo><mn>3</mn><mo>·</mo><msub><mi>n</mi>${ab}</msub></math>
+          <math display="block"><msub><mi>S</mi>${ab}</msub><mo>=</mo><mn>3</mn><mo>·</mo>${mn(n)}<mo>=</mo>${mn(3 * n)}</math>
           <p class="mp__where">где <i>S</i><sub>${f}</sub> — число мест от округа, <i>n</i><sub>${f}</sub> — число его регионов<sup>1</sup>.</p>
           <p class="mp__text">Каждый регион направляет в Сенат трёх сенаторов, поэтому вес федерального округа определяется только числом его регионов, а не населением.</p>
           <ol class="mp__notes"><li>Учитываются регионы, выбранные ползунком «Состав федерации».</li></ol>`;
@@ -456,7 +462,8 @@
       const n = T.list.length;
       return `
         <p class="mp__eyebrow">● Сенат</p>
-        <math display="block"><mi>S</mi><mo>=</mo><mn>3</mn><mo>·</mo><mi>n</mi><mo>=</mo><mn>3</mn><mo>·</mo>${mn(n)}<mo>=</mo>${mn(3 * n)}</math>
+        <math display="block"><mi>S</mi><mo>=</mo><mn>3</mn><mo>·</mo><mi>n</mi></math>
+        <math display="block"><mi>S</mi><mo>=</mo><mn>3</mn><mo>·</mo>${mn(n)}<mo>=</mo>${mn(3 * n)}</math>
         <p class="mp__where">где <i>S</i> — число мест в Сенате, <i>n</i> — число регионов<sup>1</sup>.</p>
         <p class="mp__text">Сенат — палата равного представительства регионов: каждый субъект федерации направляет трёх сенаторов независимо от численности населения.</p>
         <ol class="mp__notes"><li>Учитываются регионы, выбранные ползунком «Состав федерации» (сейчас ${n}).</li></ol>`;
@@ -813,9 +820,10 @@
       if (math.pinned) { hideMath(); return true; }
       if (unpin()) return true;
       if (state.fo) { state.fo = null; applyFO(); return true; }
+      if (state.layerPick) { pickLayer(state.layerPick); return true; }
       return false;
     };
-    document.addEventListener("contextmenu", (e) => { if (state.pinned || state.fo || math.pinned) { e.preventDefault(); reset(); } });
+    document.addEventListener("contextmenu", (e) => { if (state.pinned || state.fo || math.pinned || state.layerPick) { e.preventDefault(); reset(); } });
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeDrawer(); reset(); } });
 
     // палаты
@@ -830,8 +838,12 @@
     burger.addEventListener("click", () => {
       const open = !drawer.classList.contains("open");
       drawer.classList.toggle("open", open); burger.setAttribute("aria-expanded", open); drawer.setAttribute("aria-hidden", !open);
+      document.body.classList.toggle("drawer-open", open);
     });
-    closeDrawer = () => { drawer.classList.remove("open"); burger.setAttribute("aria-expanded", "false"); drawer.setAttribute("aria-hidden", "true"); };
+    closeDrawer = () => { document.body.classList.remove("drawer-open"); drawer.classList.remove("open"); burger.setAttribute("aria-expanded", "false"); drawer.setAttribute("aria-hidden", "true"); };
+    document.addEventListener("pointerdown", (e) => {
+      if (drawer.classList.contains("open") && !drawer.contains(e.target) && !burger.contains(e.target)) closeDrawer();
+    });
   }
   let closeDrawer = () => {};
 
@@ -877,7 +889,7 @@
       : "* по данным data.csv";
     // подписи ползунка
     const count = (lv) => regions.filter(r => r.group === "core" || (r.group === "crimea" && LEVELS[lv].crimea) || (r.group === "new" && LEVELS[lv].new)).length;
-    const details = ["После объединения регионов", "Присоединение Республики Крым и Севастополя", "Присоединение ДНР, ЛНР, Запорожской и Херсонской областей"];
+    const details = ["После объединения регионов", "Республика Крым и Севастополь", "ДНР, ЛНР, Запорожская и Херсонская области"];
     for (let lv = 0; lv < 3; lv++) {
       const n = count(lv);
       $("#lv" + lv).innerHTML = (details[lv] ? `${details[lv]} · ` : "") +
@@ -902,6 +914,7 @@
     document.querySelectorAll("#modeSeg button").forEach(b => b.addEventListener("click", () => { state.mode = b.dataset.mode; applyMode(); }));
     const legend = $("#legend");
     legend.addEventListener("pointerover", (e) => { const li = e.target.closest("li"); highlightLayer(li && !li.classList.contains("empty") ? li.dataset.k : null); });
+    legend.addEventListener("click", (e) => { const li = e.target.closest("li"); if (li && !li.classList.contains("empty")) pickLayer(li.dataset.k); });
     legend.addEventListener("pointerleave", () => highlightLayer(null));
     requestAnimationFrame(update);
   })();
